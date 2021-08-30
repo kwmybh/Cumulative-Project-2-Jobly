@@ -1,208 +1,246 @@
-"use strict";
+'use strict';
 
-const db = require("../db.js");
-const { BadRequestError, NotFoundError } = require("../expressError");
-const Company = require("./company.js");
+const request = require('supertest');
+const db = require('../db.js');
+
+const app = require('../app');
+
 const {
-  commonBeforeAll,
-  commonBeforeEach,
-  commonAfterEach,
-  commonAfterAll,
-} = require("./_testCommon");
+	commonBeforeAll,
+	commonBeforeEach,
+	commonAfterEach,
+	commonAfterAll,
+	u4Token,
+} = require('./_testCommon');
 
 beforeAll(commonBeforeAll);
 beforeEach(commonBeforeEach);
 afterEach(commonAfterEach);
 afterAll(commonAfterAll);
 
-/************************************** create */
+/************************************** POST /companies */
 
-describe("create", function () {
-  const newCompany = {
-    handle: "new",
-    name: "New",
-    description: "New Description",
-    numEmployees: 1,
-    logoUrl: "http://new.img",
-  };
+describe('POST /companies', function () {
+	const newCompany = {
+		handle: 'new',
+		name: 'New',
+		logoUrl: 'http://new.img',
+		description: 'DescNew',
+		numEmployees: 10,
+	};
 
-  test("works", async function () {
-    let company = await Company.create(newCompany);
-    expect(company).toEqual(newCompany);
+	test('ok for users', async function () {
+		const resp = await request(app)
+			.post('/companies')
+			.send(newCompany)
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.statusCode).toEqual(201);
+		expect(resp.body).toEqual({
+			company: newCompany,
+		});
+	});
 
-    const result = await db.query(
-          `SELECT handle, name, description, num_employees, logo_url
-           FROM companies
-           WHERE handle = 'new'`);
-    expect(result.rows).toEqual([
-      {
-        handle: "new",
-        name: "New",
-        description: "New Description",
-        num_employees: 1,
-        logo_url: "http://new.img",
-      },
-    ]);
-  });
+	test('bad request with missing data', async function () {
+		const resp = await request(app)
+			.post('/companies')
+			.send({
+				handle: 'new',
+				numEmployees: 10,
+			})
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.statusCode).toEqual(400);
+	});
 
-  test("bad request with dupe", async function () {
-    try {
-      await Company.create(newCompany);
-      await Company.create(newCompany);
-      fail();
-    } catch (err) {
-      expect(err instanceof BadRequestError).toBeTruthy();
-    }
-  });
+	test('bad request with invalid data', async function () {
+		const resp = await request(app)
+			.post('/companies')
+			.send({
+				...newCompany,
+				logoUrl: 'not-a-url',
+			})
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.statusCode).toEqual(400);
+	});
 });
 
-/************************************** findAll */
+/************************************** GET /companies */
 
-describe("findAll", function () {
-  test("works: no filter", async function () {
-    let companies = await Company.findAll();
-    expect(companies).toEqual([
-      {
-        handle: "c1",
-        name: "C1",
-        description: "Desc1",
-        numEmployees: 1,
-        logoUrl: "http://c1.img",
-      },
-      {
-        handle: "c2",
-        name: "C2",
-        description: "Desc2",
-        numEmployees: 2,
-        logoUrl: "http://c2.img",
-      },
-      {
-        handle: "c3",
-        name: "C3",
-        description: "Desc3",
-        numEmployees: 3,
-        logoUrl: "http://c3.img",
-      },
-    ]);
-  });
+describe('GET /companies', function () {
+	test('ok for anon', async function () {
+		const resp = await request(app).get('/companies/q/search');
+		expect(resp.body).toEqual({
+			companies: [
+				{
+					handle: 'c1',
+					description: 'Desc1',
+					logoUrl: 'http://c1.img',
+				},
+				{
+					handle: 'c2',
+					description: 'Desc2',
+					logoUrl: 'http://c2.img',
+				},
+				{
+					handle: 'c3',
+					description: 'Desc3',
+					logoUrl: 'http://c3.img',
+				},
+			],
+		});
+	});
+
+	test('passing in filters as query strings works', async function () {
+		const resp = await request(app).get(
+			'/companies/q/search?minEmployees=2&name=C2'
+		);
+		expect(resp.body).toEqual({
+			companies: [
+				{
+					description: 'Desc2',
+					handle: 'c2',
+					logoUrl: 'http://c2.img',
+					name: 'C2',
+					num_employees: 2,
+				},
+			],
+		});
+	});
+
+	test('fails: test next() handler', async function () {
+		// there's no normal failure event which will cause this route to fail ---
+		// thus making it hard to test that the error-handler works with it. This
+		// should cause an error, all right :)
+		await db.query('DROP TABLE companies CASCADE');
+		const resp = await request(app)
+			.get('/companies/q/search')
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.statusCode).toEqual(500);
+	});
 });
 
-/************************************** get */
+/************************************** GET /companies/:handle */
 
-describe("get", function () {
-  test("works", async function () {
-    let company = await Company.get("c1");
-    expect(company).toEqual({
-      handle: "c1",
-      name: "C1",
-      description: "Desc1",
-      numEmployees: 1,
-      logoUrl: "http://c1.img",
-    });
-  });
+describe('GET /companies/:handle', function () {
+	test('works for anon', async function () {
+		const resp = await request(app).get(`/companies/c1`);
+		expect(resp.body).toEqual(
+			expect.objectContaining({
+				result: {
+					company: {
+						handle: 'c1',
+						name: 'C1',
+						description: 'Desc1',
+						logoUrl: 'http://c1.img',
+						numEmployees: 1,
+					},
+					positions: expect.anything(),
+				},
+			})
+		);
+	});
 
-  test("not found if no such company", async function () {
-    try {
-      await Company.get("nope");
-      fail();
-    } catch (err) {
-      expect(err instanceof NotFoundError).toBeTruthy();
-    }
-  });
+	test('works for a: company w/o jobs', async function () {
+		const resp = await request(app).get(`/companies/c2`);
+		expect(resp.body).toEqual(
+			expect.objectContaining({
+				result: {
+					company: {
+						handle: 'c2',
+						name: 'C2',
+						description: 'Desc2',
+						numEmployees: 2,
+						logoUrl: 'http://c2.img',
+					},
+					positions: expect.anything(),
+				},
+			})
+		);
+	});
+
+	test('not found for no such company', async function () {
+		const resp = await request(app).get(`/companies/nope`);
+		expect(resp.statusCode).toEqual(404);
+	});
 });
 
-/************************************** update */
+/************************************** PATCH /companies/:handle */
 
-describe("update", function () {
-  const updateData = {
-    name: "New",
-    description: "New Description",
-    numEmployees: 10,
-    logoUrl: "http://new.img",
-  };
+describe('PATCH /companies/:handle', function () {
+	test('works for users', async function () {
+		const resp = await request(app)
+			.patch(`/companies/c1`)
+			.send({
+				name: 'C1-new',
+			})
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.body).toEqual({
+			company: {
+				handle: 'c1',
+				name: 'C1-new',
+				description: 'Desc1',
+				numEmployees: 1,
+				logoUrl: 'http://c1.img',
+			},
+		});
+	});
 
-  test("works", async function () {
-    let company = await Company.update("c1", updateData);
-    expect(company).toEqual({
-      handle: "c1",
-      ...updateData,
-    });
+	test('unauth for anon', async function () {
+		const resp = await request(app).patch(`/companies/c1`).send({
+			name: 'C1-new',
+		});
+		expect(resp.statusCode).toEqual(401);
+	});
 
-    const result = await db.query(
-          `SELECT handle, name, description, num_employees, logo_url
-           FROM companies
-           WHERE handle = 'c1'`);
-    expect(result.rows).toEqual([{
-      handle: "c1",
-      name: "New",
-      description: "New Description",
-      num_employees: 10,
-      logo_url: "http://new.img",
-    }]);
-  });
+	test('not found on no such company', async function () {
+		const resp = await request(app)
+			.patch(`/companies/nope`)
+			.send({
+				name: 'new nope',
+			})
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.statusCode).toEqual(404);
+	});
 
-  test("works: null fields", async function () {
-    const updateDataSetNulls = {
-      name: "New",
-      description: "New Description",
-      numEmployees: null,
-      logoUrl: null,
-    };
+	test('bad request on handle change attempt', async function () {
+		const resp = await request(app)
+			.patch(`/companies/c1`)
+			.send({
+				handle: 'c1-new',
+			})
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.statusCode).toEqual(400);
+	});
 
-    let company = await Company.update("c1", updateDataSetNulls);
-    expect(company).toEqual({
-      handle: "c1",
-      ...updateDataSetNulls,
-    });
-
-    const result = await db.query(
-          `SELECT handle, name, description, num_employees, logo_url
-           FROM companies
-           WHERE handle = 'c1'`);
-    expect(result.rows).toEqual([{
-      handle: "c1",
-      name: "New",
-      description: "New Description",
-      num_employees: null,
-      logo_url: null,
-    }]);
-  });
-
-  test("not found if no such company", async function () {
-    try {
-      await Company.update("nope", updateData);
-      fail();
-    } catch (err) {
-      expect(err instanceof NotFoundError).toBeTruthy();
-    }
-  });
-
-  test("bad request with no data", async function () {
-    try {
-      await Company.update("c1", {});
-      fail();
-    } catch (err) {
-      expect(err instanceof BadRequestError).toBeTruthy();
-    }
-  });
+	test('bad request on invalid data', async function () {
+		const resp = await request(app)
+			.patch(`/companies/c1`)
+			.send({
+				logoUrl: 'not-a-url',
+			})
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.statusCode).toEqual(400);
+	});
 });
 
-/************************************** remove */
+/************************************** DELETE /companies/:handle */
 
-describe("remove", function () {
-  test("works", async function () {
-    await Company.remove("c1");
-    const res = await db.query(
-        "SELECT handle FROM companies WHERE handle='c1'");
-    expect(res.rows.length).toEqual(0);
-  });
+describe('DELETE /companies/:handle', function () {
+	test('works for users', async function () {
+		const resp = await request(app)
+			.delete(`/companies/c1`)
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.body).toEqual({ deleted: 'c1' });
+	});
 
-  test("not found if no such company", async function () {
-    try {
-      await Company.remove("nope");
-      fail();
-    } catch (err) {
-      expect(err instanceof NotFoundError).toBeTruthy();
-    }
-  });
+	test('unauth for anon', async function () {
+		const resp = await request(app).delete(`/companies/c1`);
+		expect(resp.statusCode).toEqual(401);
+	});
+
+	test('not found for no such company', async function () {
+		const resp = await request(app)
+			.delete(`/companies/nope`)
+			.set('authorization', `Bearer ${u4Token}`);
+		expect(resp.statusCode).toEqual(404);
+	});
 });
