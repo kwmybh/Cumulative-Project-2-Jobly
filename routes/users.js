@@ -5,12 +5,17 @@
 const jsonschema = require('jsonschema');
 
 const express = require('express');
-const { ensureLoggedIn } = require('../middleware/auth');
+// const { ensureLoggedIn } = require("../middleware/auth");
 const { BadRequestError } = require('../expressError');
 const User = require('../models/user');
 const { createToken } = require('../helpers/tokens');
 const userNewSchema = require('../schemas/userNew.json');
 const userUpdateSchema = require('../schemas/userUpdate.json');
+const {
+	ensureCorrectUserOrAdmin,
+	ensureLoggedIn,
+} = require('../middleware/auth');
+const { ensureAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -74,15 +79,6 @@ router.get('/:username', ensureLoggedIn, async function (req, res, next) {
 	}
 });
 
-router.get('/:username/jobs/:id', async function (req, res, next) {
-	try {
-		const resp = await User.applyForJob(req.params.id, req.params.username);
-		return res.json({ applyFor: resp.jobId });
-	} catch (err) {
-		return next(err);
-	}
-});
-
 /** PATCH /[username] { user } => { user }
  *
  * Data can include:
@@ -121,5 +117,26 @@ router.delete('/:username', ensureLoggedIn, async function (req, res, next) {
 		return next(err);
 	}
 });
+
+/** POST /[username]/jobs/[id]  { state } => { application }
+ *
+ * Returns {"applied": jobId}
+ *
+ * Authorization required: admin or same-user-as-:username
+ * */
+
+router.post(
+	'/:username/jobs/:id',
+	ensureCorrectUserOrAdmin,
+	async function (req, res, next) {
+		try {
+			const jobId = +req.params.id;
+			await User.applyToJob(req.params.username, jobId);
+			return res.json({ applied: jobId });
+		} catch (err) {
+			return next(err);
+		}
+	}
+);
 
 module.exports = router;

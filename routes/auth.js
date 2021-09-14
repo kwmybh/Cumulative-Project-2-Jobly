@@ -7,8 +7,6 @@ const jsonschema = require('jsonschema');
 const User = require('../models/user');
 const express = require('express');
 const router = new express.Router();
-const db = require('../db');
-if (process.env.NODE_ENV !== 'test') db.connect();
 const { createToken } = require('../helpers/tokens');
 const userAuthSchema = require('../schemas/userAuth.json');
 const userRegisterSchema = require('../schemas/userRegister.json');

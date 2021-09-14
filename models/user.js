@@ -140,10 +140,11 @@ class User {
 
 		const userApplicationsRes = await db.query(
 			`SELECT a.job_id
-      FROM applications AS a
-      WHERE a.username = $1`,
+           FROM applications AS a
+           WHERE a.username = $1`,
 			[username]
 		);
+
 		user.applications = userApplicationsRes.rows.map((a) => a.job_id);
 		return user;
 	}
@@ -218,8 +219,8 @@ class User {
 	static async applyToJob(username, jobId) {
 		const preCheck = await db.query(
 			`SELECT id
-        FROM jobs
-        WHERE id = $1`,
+           FROM jobs
+           WHERE id = $1`,
 			[jobId]
 		);
 		const job = preCheck.rows[0];
@@ -228,8 +229,8 @@ class User {
 
 		const preCheck2 = await db.query(
 			`SELECT username
-      FROM users
-      WHERE username = $1`,
+           FROM users
+           WHERE username = $1`,
 			[username]
 		);
 		const user = preCheck2.rows[0];
@@ -238,7 +239,7 @@ class User {
 
 		await db.query(
 			`INSERT INTO applications (job_id, username)
-      VALUES ($1, $2)`,
+           VALUES ($1, $2)`,
 			[jobId, username]
 		);
 	}
