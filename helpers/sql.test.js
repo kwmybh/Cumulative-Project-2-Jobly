@@ -1,29 +1,25 @@
-const { sqlForPartialUpdate } = require('./sql');
-const { BadRequestError } = require('../expressError');
 
-const jsToSqlUsers = {
-	firstName: 'first_name',
-	lastName: 'last_name',
-	isAdmin: 'is_admin',
-};
+const { sqlForPartialUpdate } = require("./sql");
 
-describe('test helper function for partial updates to an SQL row', function () {
-	test('should require at least one key/value pair', async function () {
-		try {
-			sqlForPartialUpdate({}, jsToSqlUsers);
-			fail();
-		} catch (err) {
-			expect(err instanceof BadRequestError).toBeTruthy();
-		}
-	});
-	test('valid request should return appropriate SQL query and list of values', async function () {
-		const res = sqlForPartialUpdate(
-			{ isAdmin: 'true', firstName: 'ted' },
-			jsToSqlUsers
-		);
-		expect(res).toEqual({
-			setCols: `'is_admin'=$1, 'first_name'=$2`,
-			values: ['true', 'ted'],
-		});
-	});
+
+describe("sqlForPartialUpdate", function () {
+  test("works: 1 item", function () {
+    const result = sqlForPartialUpdate(
+        { f1: "v1" },
+        { f1: "f1", fF2: "f2" });
+    expect(result).toEqual({
+      setCols: "\"f1\"=$1",
+      values: ["v1"],
+    });
+  });
+
+  test("works: 2 items", function () {
+    const result = sqlForPartialUpdate(
+        { f1: "v1", jsF2: "v2" },
+        { jsF2: "f2" });
+    expect(result).toEqual({
+      setCols: "\"f1\"=$1, \"f2\"=$2",
+      values: ["v1", "v2"],
+    });
+  });
 });
